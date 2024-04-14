@@ -38,17 +38,22 @@ sae.load_state_dict(t.load(file_path, map_location = DEVICE))
 with t.no_grad():
     recons, l1s, latents = sae(embeds)
 
-
+top_activations, top_activating_tokens = latents.topk(10)
+# %%
+top_activations.shape
+# %%
+top_activating_tokens.shape
 # %%
 latents.shape
 # %%
-t.nonzero(latents).shape
+top_activating_tokens
 
 # %%
 df_contigency = pd.DataFrame(t.nonzero(latents).numpy())
 df_contigency.columns = ['token_index', 'feature_index']
 # %%
 df_contigency.head()
+len(df_contigency)
 # %%
 def plot_distribution(df_contigency, group_by_col, count_of_col, num_bins = 10, graph_title = None):
     # turn contingency matrix dataframe into value_counts that are ready to be plotted
@@ -79,32 +84,52 @@ plot_distribution(df_contigency,
                    group_by_col = 'feature',
                    count_of_col = 'associated_tokens')
 
-
-
 # # %%
-import networkx as nx
-from networkx.algorithms import bipartite
-from pyvis.network import Network
-# %%
-# Create a Network instance
-B = nx.Graph()
-B.add_nodes_from(df_contigency['token_index'].values.tolist(), bipartite = 0)
-B.add_nodes_from(df_contigency['feature_index'].values.tolist(), bipartite = 1)
-
-B.add_edges_from(list(zip(df_contigency['token_index'], df_contigency['feature_index'])))
-
-# %%
-B.edges(20)
-B.nodes(20)
-# nx.is_bipartite(B)
-# %%
-# nt = Network('500px', '500px')
-# nt.from_nx(B)
-# nt.show('../graphs/nx.html',notebook=False)
+# top_activating_tokens
 # # %%
-# top_nodes = {n for n, d in B.nodes(data=True) if d["bipartite"] == 0}
-# bottom_nodes = set(B) - top_nodes
+# # Look at co-activating patterns between tokens
+# # df_contigency.head()
+# # df_contigency.groupby(['feature_index'])
+# # Create a binary matrix where rows represent tokens and columns represent features
+# sets_list = [set(indices.tolist()) for indices in top_activating_tokens[:1000]]
+# sets_list
+# # %%
+# # Initialize matrix to store overlap counts
+# overlap_counts = t.zeros(len(sets_list), len(sets_list))
+
+# # Iterate over pairs of sets and count overlapping elements
+# for i in range(len(sets_list)):
+#     for j in range(i+1, len(sets_list)):
+#         overlap_counts[i, j] = len(sets_list[i].intersection(sets_list[j]))
+#         overlap_counts[j, i] = overlap_counts[i, j]  # Symmetric matrix
+
+# print(overlap_counts)
+# # %%
+# overlap_counts.shape
+# # # # %%
+# # import networkx as nx
+# # from networkx.algorithms import bipartite
+# # from pyvis.network import Network
 # # # %%
+# # # Create a Network instance
+# # B = nx.Graph()
+# # B.add_nodes_from(df_contigency['token_index'].values.tolist(), bipartite = 0)
+# # B.add_nodes_from(df_contigency['feature_index'].values.tolist(), bipartite = 1)
+
+# # B.add_edges_from(list(zip(df_contigency['token_index'], df_contigency['feature_index'])))
+
+# # # %%
+# # B.edges(20)
+# # B.nodes(20)
+# # nx.is_bipartite(B)
+# # %%
+# # nt = Network('500px', '500px')
+# # nt.from_nx(B)
+# # nt.show('../graphs/nx.html',notebook=False)
+# # # %%
+# # top_nodes = {n for n, d in B.nodes(data=True) if d["bipartite"] == 0}
+# # bottom_nodes = set(B) - top_nodes
+# # # # %%
 
 
-# %%
+# # %%
