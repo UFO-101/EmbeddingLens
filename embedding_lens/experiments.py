@@ -5,8 +5,8 @@ import torch as t
 import plotly.graph_objects as go
 import plotly.express as px
 from torch.nn.functional import mse_loss, cosine_similarity
-from spellchecker import SpellChecker
 
+from embedding_lens.embeds import get_embeds
 from embedding_lens.lr_scheduler import get_scheduler
 from embedding_lens.sae import SparseAutoencoder
 from embedding_lens.custom_tqdm import tqdm
@@ -14,24 +14,13 @@ from embedding_lens.train import train
 from embedding_lens.utils import repo_path_to_abs_path
 #%%
 
-spell = SpellChecker()
 MODEL_NAME: Final[str] = "gpt2"
 # MODEL_NAME: Final[str] = "pythia-2.8b-deduped"
 DEVICE = "cuda" if t.cuda.is_available() else "cpu"
 
 model = HookedTransformer.from_pretrained_no_processing(MODEL_NAME, device=DEVICE)
 d_model = model.cfg.d_model
-embeds = model.W_E.detach().clone().to(DEVICE)
-
-#%%
-# filter to english words
-tok_strs: List[str] = model.to_str_tokens(t.arange(model.cfg.d_vocab))  # type: ignore
-tok_strs = [word.strip() for word in tok_strs]
-correct_words = spell.known(tok_strs)
-en_idxs = [i for i, tok_str in enumerate(tok_strs) if tok_str.strip() in correct_words]
-print("embeds", embeds.shape)
-embeds = embeds[en_idxs]
-print("en embeds", embeds.shape)
+embeds, tok_strs = get_embeds(model, DEVICE, en_only=True)
 
 #%%
 N_FEATURES = 2000
@@ -39,9 +28,9 @@ N_EPOCHS = 25000
 L1_LAMBDA = 2e-1
 LR = 1e-3
 
-TRAIN = True
-SAVE = True
-LOAD = False
+TRAIN = False
+SAVE = False
+LOAD = True
 file_name = f"sae_{MODEL_NAME}_{N_FEATURES}_feats_{N_EPOCHS}_epochs_{L1_LAMBDA}_l1_{LR}_lr.pth"
 file_path = repo_path_to_abs_path(f"trained_saes/{file_name}")
 
@@ -82,15 +71,39 @@ px.histogram(
 ).show()
 
 #%%
-N_FEATURES = 25
-# For a random sample of features, plot the top activating tokens
-for i in range(N_FEATURES):
-    feat_idx = t.randint(0, sae.n_latents, (1,)).item()
+N_FEATURES = 5
+
+def print_feature_top_tokens(
+    latents: t.Tensor,
+    tok_strs: List[str],
+    feat_idx: int,
+    N_TOKENS: int = 10
+):
     print(f"Feature {feat_idx}", "n activated", non_zero_occurences[feat_idx].item())
-    top_activations, top_activating_tokens = latents[:, feat_idx].topk(10)
-    top_activating_tokens = t.tensor([en_idxs[i] for i in top_activating_tokens])
-    feat_tok_strs = model.to_str_tokens(top_activating_tokens)
+    top_activations, top_activating_tokens = latents[:, feat_idx].topk(N_TOKENS)
+    feat_tok_strs = [tok_strs[idx] for idx in top_activating_tokens]
     for tok_str, activation in zip(feat_tok_strs, top_activations):
         print(f"'{tok_str}' {activation.item():.2f}")
     print()
+    
+
+# For a random sample of features, plot the top activating tokens
+for i in range(N_FEATURES):
+    feat_idx = int(t.randint(0, sae.n_latents, (1,)).item())
+    print_feature_top_tokens(latents, tok_strs, feat_idx)
 # %%
+
+N_TOKENS = 5
+N_FEATURES_PER_TOKEN = 5
+N_TOKENS_PER_FEATURE = 10
+# For a random sample of tokens, show the top activating features
+# AND for each of those features, show the top activating tokens
+for i in range(N_TOKENS):
+    rand_tok_idx = int(t.randint(0, embeds.shape[0], (1,)).item())
+    print(f"Token {rand_tok_idx}, '{tok_strs[rand_tok_idx]}'")
+    top_activations, top_activating_features = latents[rand_tok_idx].topk(N_FEATURES_PER_TOKEN)
+    print("top_activating_features", top_activating_features.shape)
+    for feat_idx, activation in zip(top_activating_features, top_activations):
+        print(f"Feature {feat_idx.item()}", "activation on token", activation.item())
+        print_feature_top_tokens(latents, tok_strs, feat_idx.item(), N_TOKENS_PER_FEATURE)
+    print()
