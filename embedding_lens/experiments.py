@@ -34,7 +34,7 @@ embeds = embeds[en_idxs]
 print("en embeds", embeds.shape)
 
 #%%
-N_FEATURES = 2000 # first is 10,000, then 5000
+N_FEATURES = 2000
 N_EPOCHS = 25000
 L1_LAMBDA = 2e-1
 LR = 1e-3
@@ -94,4 +94,3 @@ for i in range(N_FEATURES):
         print(f"'{tok_str}' {activation.item():.2f}")
     print()
 # %%
-
