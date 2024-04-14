@@ -1,4 +1,5 @@
-from typing import Final
+#%%
+from typing import Final, List
 
 from spellchecker import SpellChecker
 from embedding_lens.sae import SparseAutoencoder
@@ -31,7 +32,9 @@ file_name = f"sae_{MODEL_NAME}_{N_FEATURES}_feats_{N_EPOCHS}_epochs_{L1_LAMBDA}_
 file_path = repo_path_to_abs_path(f"trained_saes/{file_name}")
 
 sae = SparseAutoencoder(N_FEATURES, d_model, decoder_bias=embeds.mean(0)).to(DEVICE)
-sae.load_state_dict(t.load(file_path))
+sae.load_state_dict(t.load(file_path, map_location = DEVICE))
 
 with t.no_grad():
     recons, l1s, latents = sae(embeds)
+
+# %%
