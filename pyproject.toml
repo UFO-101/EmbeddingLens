@@ -16,6 +16,7 @@ plotly = "^5.20.0"
 ipykernel = "^6.29.4"
 ipywidgets = "^8.1.2"
 pyspellchecker = "^0.8.1"
+nltk = "^3.8.1"
 
 
 [tool.poetry.group.dev.dependencies]
