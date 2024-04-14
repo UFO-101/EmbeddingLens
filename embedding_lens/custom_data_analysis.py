@@ -6,6 +6,7 @@ from embedding_lens.sae import SparseAutoencoder
 from embedding_lens.utils import repo_path_to_abs_path
 from transformer_lens import HookedTransformer
 import torch as t
+import pandas as pd
 
 spell = SpellChecker()
 
@@ -37,4 +38,14 @@ sae.load_state_dict(t.load(file_path, map_location = DEVICE))
 with t.no_grad():
     recons, l1s, latents = sae(embeds)
 
+
+# %%
+latents.shape
+# %%
+t.nonzero(latents).shape
+
+# %%
+activated_indexes = t.nonzero(latents).squeeze(0).tolist()
+print(activated_indexes)
+# print(latents[activated_indexes])
 # %%
