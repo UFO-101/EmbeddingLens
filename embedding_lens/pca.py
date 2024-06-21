@@ -6,9 +6,13 @@ from transformer_lens import HookedTransformer
 from embedding_lens.embeds import get_embeds
 import plotly.graph_objects as go
 import plotly.express as px
+import os
 
 # from embedding_lens.visualize import plot_word_scores
 from plotly.subplots import make_subplots
+
+from embedding_lens.utils import repo_path_to_abs_path
+from embedding_lens.visualize import plot_word_scores
 
 #%%
 MODEL_NAME: Final[str] = "gpt2"
@@ -46,72 +50,22 @@ print("principal_values", principal_values.shape, "principal_components", princi
 # Plot the principal values as a bar chart
 px.bar(x=t.arange(principal_values.size(0)).cpu().numpy(), y=principal_values.cpu().numpy()).show()
 #%%
-def plot_word_scores(
-    scores: t.Tensor,
-    words: List[str],
-    list_len: int = 10,
-    n_cols: int = 3,
-    title: Optional[str] = None
-) -> go.Figure:
-    assert scores.size(0) == len(words), "Scores and words must have the same length"
-    fig = make_subplots(rows=2, cols=n_cols,
-                        specs=[[{"colspan": 3}, None, None],
-                               [{}, {}, {}]],
-                        row_heights=[0.2, 0.8],
-    )
-    # Histogram of scores in the top row
-    fig.add_trace(
-        go.Histogram(x=scores.cpu().numpy(), nbinsx=100),
-        row=1, col=1
-    )
-    fig.update_yaxes(tickvals=[], ticktext=[], row=1, col=1)
-
-    # Get the top, middle, and bottom `list_len` words
-    top_scores, top_idxs = scores.topk(list_len)
-
-    # Sort the scores and get indices
-    sorted_scores, sorted_indices = scores.sort()
-    # Calculate the start and end indices for the middle scores
-    middle_start = len(scores) // 2 - list_len // 2
-    middle_end = middle_start + list_len
-    # Extract the middle scores and words
-    middle_scores = sorted_scores[middle_start:middle_end]
-    middle_idxs = sorted_indices[middle_start:middle_end]
-
-    bottom_scores, bottom_idxs = scores.topk(list_len, largest=False)
-    min_score, max_score = scores.min().item(), scores.max().item()
-    
-
-    # In the bottom row plot the top, middle, and bottom words as heatmaps
-    for i, (s, w) in enumerate(zip([top_scores, middle_scores, bottom_scores],
-                                            [top_idxs, middle_idxs, bottom_idxs])):
-        # Sort s and w by s
-        sorted_s, sorted_idxs = s.sort()
-        sorted_w = w[sorted_idxs]
-        fig.add_trace(
-            go.Heatmap(
-                z=sorted_s.unsqueeze(-1).cpu().numpy(),
-                text=[[words[i]] for i in sorted_w.cpu().numpy()],
-                texttemplate="%{text}",
-                textfont={"size": 15},
-                zmin=min_score,
-                zmax=max_score,
-            ),
-            row=2, col=n_cols - i
-        )
-        fig.update_xaxes(tickvals=[], ticktext=[], row=2, col=n_cols - i)
-        fig.update_yaxes(tickvals=[], ticktext=[], row=2, col=n_cols - i)
-    fig.update_layout(margin=dict(l=20, r=20, t=20, b=20))
-    fig.update_layout(height=400, width=450)
-    return fig
-
-N_COMPONENTS = 1
-# For N random components, project the data onto the line
+folder_path = repo_path_to_abs_path("figures/pca")
+if not os.path.exists(folder_path):
+    os.makedirs(folder_path)
+N_COMPONENTS = 3
 for i in range(N_COMPONENTS):
     component = principal_components[:, i]
     projected = embeds @ component
-    plot_word_scores(projected, tok_strs).show()
-    # fig = px.scatter(x=projected.cpu().numpy(), y=t.zeros_like(projected).cpu().numpy(), hover_name=tok_strs)
-    # fig.update_traces(textposition='top center')
-    # fig.update_layout(title=f"Principal Component {i}")
-    # fig.show()
+    title = f"Projecting tokens on to PCA component {i}"
+    plot_word_scores(projected, tok_strs, title=title).write_image(f"{folder_path}/pca_{i}.png", scale=3)
+
+# For N random components, project the data onto the line
+N_RANDOM_COMPONENTS = 3
+for i in range(N_RANDOM_COMPONENTS):
+    rand_idx = int(t.randint(0, principal_components.size(1), (1,)).item())
+    component = principal_components[:, rand_idx]
+    projected = embeds @ component
+    title = f"Projecting tokens on to PCA component {rand_idx}"
+    plot_word_scores(projected, tok_strs, title=title).write_image(f"{folder_path}/pca_{rand_idx}.png", scale=3)
+# %%

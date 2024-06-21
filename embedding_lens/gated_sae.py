@@ -4,8 +4,9 @@ from typing import Dict, Optional, Tuple
 import torch as t
 from einops import einsum
 from torch.nn.init import kaiming_uniform_
+from torch.nn.functional import relu
 
-class SparseAutoencoder(t.nn.Module):
+class GatedSparseAutoencoder(t.nn.Module):
     """
     Sparse Autoencoder
 
@@ -37,11 +38,15 @@ class SparseAutoencoder(t.nn.Module):
         self.n_latents: int = n_latents
         self.n_inputs: int = n_inputs
         self.dec_bias = t.nn.Parameter(decoder_bias)
-        self.enc_bias = t.nn.Parameter(t.zeros([n_latents]))
-        self.encode_weight = t.nn.Parameter(t.zeros([n_latents, n_inputs]))
+        self.enc_gate_bias = t.nn.Parameter(t.zeros([n_latents]))
+        self.enc_mag_bias = t.nn.Parameter(t.zeros([n_latents]))
         self.decode_weight = t.nn.Parameter(t.zeros([n_inputs, n_latents]))
-        [kaiming_uniform_(w) for w in [self.encode_weight, self.decode_weight]]
+        self.encode_weight = t.nn.Parameter(t.zeros([n_latents, n_inputs]))
+        self.encode_weight_mag = t.nn.Parameter(t.ones([n_latents]))
+
+        kaiming_uniform_(self.decode_weight)
         self.decode_weight.data /= self.decode_weight.data.norm(dim=0)
+        self.encode_weight.data = self.decode_weight.data.T
 
     def reset_activated_latents(
         self, batch_len: Optional[int] = None, seq_len: Optional[int] = None
@@ -55,21 +60,24 @@ class SparseAutoencoder(t.nn.Module):
     @classmethod
     def from_state_dict(
         cls, state_dict: Dict[str, t.Tensor]
-    ) -> "SparseAutoencoder":
+    ) -> "GatedSparseAutoencoder":
         n_latents, n_inputs = state_dict["encode_weight"].shape
         autoencoder = cls(n_latents, n_inputs)
         autoencoder.load_state_dict(state_dict, strict=True, assign=True)
         autoencoder.reset_activated_latents()
         return autoencoder
 
-    def encode(self, x: t.Tensor) -> t.Tensor:
+    def encode(self, x: t.Tensor) -> Tuple[t.Tensor, ...]:
         """
         :param x: input data (shape: [..., [seq], n_inputs])
         :return: autoencoder latents (shape: [..., [seq], n_latents])
         """
-        encoded = einsum(x - self.dec_bias, self.encode_weight, "... d, ... l d -> ... l")
-        latents_pre_act = encoded + self.enc_bias
-        return t.nn.functional.relu(latents_pre_act)
+        pre = einsum(x - self.dec_bias, self.encode_weight, "... d, ... l d -> ... l")
+        pi_gate = relu(pre + self.enc_gate_bias)
+        gates = (pi_gate > 0) * 1.0
+        pre_mags = pre * t.exp(self.encode_weight_mag) + self.enc_mag_bias
+        mags = relu(pre_mags)
+        return gates * mags, pi_gate
 
     def decode(self, x: t.Tensor) -> t.Tensor:
         """
@@ -84,7 +92,7 @@ class SparseAutoencoder(t.nn.Module):
         :param x: input data (shape: [..., n_inputs])
         :return:  reconstructed data (shape: [..., n_inputs])
         """
-        latents = self.encode(x)
+        latents, pi_gate = self.encode(x)
         self.latent_total_act += latents.sum_to_size(self.latent_total_act.shape)
         recons = self.decode(latents)
-        return recons, latents
+        return recons, pi_gate
