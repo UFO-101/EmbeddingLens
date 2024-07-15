@@ -34,9 +34,9 @@ L1_LAMBDA = 1e3
 CORRELATION_LAMBDA = 100
 LR = 1e-3
 
-TRAIN = True
-SAVE = True
-LOAD = False
+TRAIN = False
+SAVE = False
+LOAD = True
 
 sae_name = "gated_sae" if GATED else "sae"
 sae_name = f"{sae_name}_{MODEL_NAME}_{N_FEATURES}_feats_{N_EPOCHS}_epochs_{L1_LAMBDA}_l1_{LR}_lr_{CORRELATION_LAMBDA}_correlation"

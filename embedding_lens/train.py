@@ -1,6 +1,3 @@
-from re import A
-from statistics import covariance
-from typing import Optional
 from embedding_lens.gated_sae import GatedSparseAutoencoder
 from embedding_lens.lr_scheduler import get_scheduler
 from embedding_lens.sae import SparseAutoencoder

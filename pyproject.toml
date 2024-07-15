@@ -11,7 +11,7 @@ python = "^3.10"
 torch = "^2.2.2"
 transformer-lens = "^1.15.0"
 einops = "^0.7.0"
-tqdm = {git = "https://github.com/UFO-101/tqdm.git"}
+vscode-tqdm = "^4.66.2"
 plotly = "^5.20.0"
 ipykernel = "^6.29.4"
 ipywidgets = "^8.1.2"
