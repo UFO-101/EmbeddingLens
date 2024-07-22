@@ -1,42 +1,44 @@
 #%%
-from typing import Final, List
-from transformer_lens import HookedTransformer
-import torch as t
-import plotly.graph_objects as go
-import plotly.express as px
-from torch.nn.functional import mse_loss, cosine_similarity
 import os
+from typing import Final, List
 
+import plotly.express as px
+import plotly.graph_objects as go
+import torch as t
+from torch.nn.functional import cosine_similarity, mse_loss
+from transformer_lens import HookedTransformer
+
+from embedding_lens.custom_tqdm import tqdm
 from embedding_lens.embeds import get_embeds
 from embedding_lens.gated_sae import GatedSparseAutoencoder
 from embedding_lens.lr_scheduler import get_scheduler
 from embedding_lens.sae import SparseAutoencoder
-from embedding_lens.custom_tqdm import tqdm
 from embedding_lens.train import train
 from embedding_lens.utils import repo_path_to_abs_path
 from embedding_lens.visualize import plot_word_scores
+
 #%%
 
 MODEL_NAME: Final[str] = "gpt2"
 # MODEL_NAME: Final[str] = "tiny-stories-33M"
 # MODEL_NAME: Final[str] = "pythia-2.8b-deduped"
-DEVICE = "cuda" if t.cuda.is_available() else "cpu"
-GATED = False
+DEVICE = "cuda:2" if t.cuda.is_available() else "cpu"
 
 model = HookedTransformer.from_pretrained_no_processing(MODEL_NAME, device=DEVICE)
 d_model = model.cfg.d_model
 embeds, tok_strs = get_embeds(model, DEVICE, en_only=True)
 
 #%%
-N_FEATURES = 2000
-N_EPOCHS = 4000
+GATED = False
+N_FEATURES = 10000
+N_EPOCHS = 1000
 L1_LAMBDA = 1e3
-CORRELATION_LAMBDA = 100
+CORRELATION_LAMBDA = 0
 LR = 1e-3
 
-TRAIN = False
+TRAIN = True
 SAVE = False
-LOAD = True
+LOAD = False
 
 sae_name = "gated_sae" if GATED else "sae"
 sae_name = f"{sae_name}_{MODEL_NAME}_{N_FEATURES}_feats_{N_EPOCHS}_epochs_{L1_LAMBDA}_l1_{LR}_lr_{CORRELATION_LAMBDA}_correlation"
