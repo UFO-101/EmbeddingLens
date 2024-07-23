@@ -72,6 +72,7 @@ class ReverseTopKSparseAutoencoder(t.nn.Module):
         zipf_freq = t.arange(1, n_latents + 1, device=self.dec_bias.device) 
         zipf_freq = 1 / ((zipf_freq + zipf_coeffs[1]).pow(zipf_coeffs[0]))
         self.feature_topk_indices = (batch_size * zipf_freq).ceil().long().unsqueeze(0)
+        self.feature_topk_indices = self.feature_topk_indices - 1 # 0-indexed
         print("feature_topk", self.feature_topk_indices.shape, "feature_topk", self.feature_topk_indices)
 
     def reset_activated_latents(
@@ -101,8 +102,12 @@ class ReverseTopKSparseAutoencoder(t.nn.Module):
         :param x: input data (shape: [..., [seq], n_inputs])
         :return: autoencoder latents (shape: [..., [seq], n_latents])
         """
-        encoded = einsum(x - self.dec_bias, self.encode_weight, "... d, ... l d -> ... l")
-        return encoded
+        x = x - self.dec_bias
+        encoded = einsum(x, self.encode_weight, "... d, ... l d -> ... l")
+        mag_product = x.norm(dim=-1) * self.encode_weight.norm(dim=-1)
+        encoded_cosine_sim = encoded / mag_product
+        return encoded_cosine_sim
+        # return encoded
 
     def decode(self, x: t.Tensor) -> t.Tensor:
         """
@@ -232,6 +237,7 @@ if LOAD:
     sae = ReverseTopKSparseAutoencoder(20518, d_model, embeds.shape[0], (1.0, 21000))
     sae.to(DEVICE)
     state_dict = {
+        # "encode_weight": embeds / (embeds.norm(dim=-1, keepdim=True) ** 2),
         "encode_weight": embeds,
         "decode_weight": embeds.T,
         "dec_bias": t.zeros_like(embeds.mean(0), device=DEVICE),
@@ -240,6 +246,7 @@ if LOAD:
 
 # %%
 with t.no_grad():
+    print("hi")
     recons, latents = sae(embeds)
     l1s = t.abs(latents).sum(dim=-1)
     print("recons", recons.shape, "latents", latents.shape)
