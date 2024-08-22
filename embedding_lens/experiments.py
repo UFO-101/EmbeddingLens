@@ -1,4 +1,4 @@
-#%%
+# %%
 import os
 from typing import Final, List
 
@@ -17,7 +17,7 @@ from embedding_lens.train import train
 from embedding_lens.utils import repo_path_to_abs_path
 from embedding_lens.visualize import plot_word_scores
 
-#%%
+# %%
 
 MODEL_NAME: Final[str] = "gpt2"
 # MODEL_NAME: Final[str] = "tiny-stories-33M"
@@ -28,7 +28,7 @@ model = HookedTransformer.from_pretrained_no_processing(MODEL_NAME, device=DEVIC
 d_model = model.cfg.d_model
 embeds, tok_strs = get_embeds(model, DEVICE, en_only=True)
 
-#%%
+# %%
 GATED = False
 N_FEATURES = 10000
 N_EPOCHS = 1000
@@ -46,15 +46,29 @@ file_name = f"{sae_name}.pth"
 file_path = repo_path_to_abs_path(f"trained_saes/{file_name}")
 
 if TRAIN:
-    sae = train(embeds, N_FEATURES, d_model, LR, N_EPOCHS, L1_LAMBDA, DEVICE, GATED,
-                use_correlation_loss=True, CORRELATION_LAMBDA=CORRELATION_LAMBDA)
+    sae = train(
+        embeds,
+        N_FEATURES,
+        d_model,
+        LR,
+        N_EPOCHS,
+        L1_LAMBDA,
+        DEVICE,
+        GATED,
+        use_correlation_loss=True,
+        CORRELATION_LAMBDA=CORRELATION_LAMBDA,
+    )
 if SAVE:
     t.save(sae.state_dict(), file_path)
 if LOAD:
     if GATED:
-        sae = GatedSparseAutoencoder(N_FEATURES, d_model, decoder_bias=embeds.mean(0)).to(DEVICE)
+        sae = GatedSparseAutoencoder(
+            N_FEATURES, d_model, decoder_bias=embeds.mean(0)
+        ).to(DEVICE)
     else:
-        sae = SparseAutoencoder(N_FEATURES, d_model, decoder_bias=embeds.mean(0)).to(DEVICE)
+        sae = SparseAutoencoder(N_FEATURES, d_model, decoder_bias=embeds.mean(0)).to(
+            DEVICE
+        )
     sae.load_state_dict(t.load(file_path))
 
 # %%
@@ -82,7 +96,9 @@ if not os.path.exists(folder_path):
 px.histogram(x=recons_l2_dists.cpu().numpy(), nbins=100, title="MSEs").show()
 # .write_image(f"{folder_path}/gpt2_sae_mse.png", scale=3)
 # Plot distribution of normalized L2 distance
-px.histogram(x=normalized_l2_dists.cpu().numpy(), nbins=100, title="Normalized L2s").show()
+px.histogram(
+    x=normalized_l2_dists.cpu().numpy(), nbins=100, title="Normalized L2s"
+).show()
 # .write_image(f"{folder_path}/gpt2_sae_normalized_l2.png", scale=3)
 # Plot distribution of cosine similarity
 px.histogram(x=cosine_sims.cpu().numpy(), nbins=100, title="Cosine Similarity").show()
@@ -97,11 +113,11 @@ px.histogram(x=non_zero_latents.cpu().numpy(), nbins=100, title="L0s").show()
 px.histogram(
     x=non_zero_occurences.cpu().numpy(),
     nbins=100,
-    title="Number of times features activated"
+    title="Number of times features activated",
 ).show()
 # ).write_image(f"{folder_path}/non_zero_occurences.png", scale=3)
 
-#%%
+# %%
 N_FEATURES = 5
 with t.no_grad():
     feature_output_logits = embeds @ sae.decode_weight
@@ -135,12 +151,16 @@ N_FEATURES_PER_TOKEN = 5
 for i in range(N_TOKENS):
     rand_tok_idx = int(t.randint(0, embeds.shape[0], (1,)).item())
     print(f"Token {rand_tok_idx}, '{tok_strs[rand_tok_idx]}'")
-    top_activations, top_activating_features = latents[rand_tok_idx].topk(N_FEATURES_PER_TOKEN)
+    top_activations, top_activating_features = latents[rand_tok_idx].topk(
+        N_FEATURES_PER_TOKEN
+    )
     folder_name = f"figures/{sae_name}/tokens/{tok_strs[rand_tok_idx]}"
     folder_path = repo_path_to_abs_path(folder_name)
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
-    for rank, (feat_idx, activation) in enumerate(zip(top_activating_features, top_activations)):
+    for rank, (feat_idx, activation) in enumerate(
+        zip(top_activating_features, top_activations)
+    ):
         plot_word_scores(
             latents[:, feat_idx],
             tok_strs,
@@ -148,7 +168,7 @@ for i in range(N_TOKENS):
         ).show()
         # .write_image(f"{folder_path}/feat_{feat_idx}_[rank_{rank}_act_{activation}]_top_activating_tokens.png", scale=3)
 
-#%%
+# %%
 logits, activations = model.run_with_cache("The cat sat on the mat")
 activations.keys()
 acts = activations["blocks.5.hook_resid_pre"]
@@ -163,4 +183,4 @@ print("mse", mse.tolist())
 print("cosine_sim", cosine_sim.tolist())
 print("l0", l0.tolist())
 
-#%%
+# %%
