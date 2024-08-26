@@ -9,8 +9,8 @@ packages = [{include = "embedding_lens"}]
 [tool.poetry.dependencies]
 python = "^3.12"
 torch = "^2.2.2"
-transformer-lens = "^1.15.0"
-einops = "^0.7.0"
+transformer-lens = "^2.4.0"
+einops = "^0.6.0"
 vscode-tqdm = "^4.66.2"
 plotly = "^5.20.0"
 ipykernel = "^6.29.4"
@@ -43,7 +43,6 @@ authors = [
 requires-python = "<4.0,>=3.12"
 dependencies = [
     "torch<3.0.0,>=2.2.2",
-    "einops<1.0.0,>=0.7.0",
     "vscode-tqdm<5.0.0,>=4.66.2",
     "plotly<6.0.0,>=5.20.0",
     "ipykernel<7.0.0,>=6.29.4",
@@ -52,8 +51,8 @@ dependencies = [
     "nltk<4.0.0,>=3.8.1",
     "kaleido==0.2.1",
     "nbformat>=5.10.4",
-    "auto-circuit>=1.0.0",
-    "transformer-lens @ git+https://github.com/UFO-101/TransformerLens.git",
+    "madbg>=1.3.2",
+    "auto-circuit==1.0.1",
 ]
 name = "embedding-lens"
 version = "0.1.0"

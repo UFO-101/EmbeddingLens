@@ -1,4 +1,5 @@
 # %%
+from datetime import datetime
 from typing import Dict, Final, Optional, Tuple
 
 import plotly.express as px
@@ -19,8 +20,8 @@ from embedding_lens.lr_scheduler import get_scheduler
 from embedding_lens.utils import repo_path_to_abs_path
 from embedding_lens.visualize import plot_word_scores
 
-MODEL_NAME: Final[str] = "gpt2"
-# MODEL_NAME: Final[str] = "gemma-2-2b"
+# MODEL_NAME: Final[str] = "gpt2"
+MODEL_NAME: Final[str] = "gemma-2-2b"
 
 # MODEL_NAME: Final[str] = "tiny-stories-33M"
 DEVICE = "cuda:0" if t.cuda.is_available() else "cpu"
@@ -198,7 +199,7 @@ def train(
         warm_up_steps=0,
         decay_steps=0,
         lr_end=0.0,
-        num_cycles=20,
+        num_cycles=min(20, N_EPOCHS // 10),
     )
     dataset = TensorDataset(embeds.detach())
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
@@ -243,6 +244,12 @@ def train(
         go.Scatter(x=step_history, y=n_dead_feature_history, name="Dead Features")
     )
     fig.show()
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    fig.write_image(
+        repo_path_to_abs_path(
+            f"trained_saes/{name}_loss_mse_lr_dead_features_{timestamp}.png"
+        )
+    )
     return sae
 
 
@@ -252,13 +259,14 @@ TRAIN = True
 SAVE = True
 LOAD = False
 
-N_FEATURES = 2_000
-N_EPOCHS = 3000
+N_FEATURES = 4_000
+N_EPOCHS = 10_000
+# N_EPOCHS = 20
 # BATCH_SIZE = 30_000
-BATCH_SIZE = embeds.shape[0]
+BATCH_SIZE = embeds.shape[0] // 2
 LR = 4e-2
 # ZIPF_COEFFS = (1.0, 100.0)
-ZIPF_COEFFS = (1.0, 7.0)
+ZIPF_COEFFS = (1.0, 7.0 * 4.5)
 
 
 sae_name = f"reverse_topk_zipf_{ZIPF_COEFFS[0]}_a_{ZIPF_COEFFS[1]}_b"
@@ -314,23 +322,96 @@ with t.no_grad():
     print("non_zero_occurences", non_zero_occurences.shape)
 
 # Plot distribution of reconstruction L2 distance
-px.histogram(x=recons_l2_dists.cpu().numpy(), nbins=100, title="MSEs").show()
+fig = px.histogram(x=recons_l2_dists.cpu().numpy(), nbins=100, title="MSEs")
+fig.add_vline(
+    x=(mean := recons_l2_dists.mean().item()), line_dash="dash", line_color="red"
+)
+fig.add_annotation(
+    x=mean,
+    y=0.15,
+    yref="paper",
+    text=f"Mean: {mean:.2f}",
+    showarrow=False,
+    font=dict(color="white"),
+)
+fig.show()
+
 # Plot distribution of normalized L2 distance
-px.histogram(
+fig = px.histogram(
     x=normalized_l2_dists.cpu().numpy(), nbins=100, title="Normalized L2s"
-).show()
+)
+fig.add_vline(
+    x=(mean := normalized_l2_dists.mean().item()), line_dash="dash", line_color="red"
+)
+fig.add_annotation(
+    x=mean,
+    y=0.15,
+    yref="paper",
+    text=f"Mean: {mean:.2f}",
+    showarrow=False,
+    font=dict(color="white"),
+)
+fig.show()
 # Plot distribution of cosine similarity
-px.histogram(x=cosine_sims.cpu().numpy(), nbins=100, title="Cosine Similarity").show()
+fig = px.histogram(x=cosine_sims.cpu().numpy(), nbins=100, title="Cosine Similarity")
+fig.add_vline(x=(mean := cosine_sims.mean().item()), line_dash="dash", line_color="red")
+fig.add_annotation(
+    x=mean,
+    y=0.15,
+    yref="paper",
+    text=f"Mean: {mean:.2f}",
+    showarrow=False,
+    font=dict(color="white"),
+)
+fig.show()
 # Plot distribution of L1s
-px.histogram(x=l1s.cpu().numpy(), nbins=100, title="L1s").show()
+fig = px.histogram(x=l1s.cpu().numpy(), nbins=100, title="L1s")
+fig.add_vline(x=(mean := l1s.mean().item()), line_dash="dash", line_color="red")
+fig.add_annotation(
+    x=mean,
+    y=0.15,
+    yref="paper",
+    text=f"Mean: {mean:.2f}",
+    showarrow=False,
+    font=dict(color="white"),
+)
+fig.show()
 # Plot distribution of non-zero latents by token
-px.histogram(x=non_zero_latents.cpu().numpy(), nbins=100, title="L0s").show()
+fig = px.histogram(x=non_zero_latents.cpu().numpy(), nbins=100, title="L0s")
+fig.add_vline(
+    x=(mean := non_zero_latents.float().mean().item()),
+    line_dash="dash",
+    line_color="red",
+)
+fig.add_annotation(
+    x=mean,
+    y=0.15,
+    yref="paper",
+    text=f"Mean: {mean:.2f}",
+    showarrow=False,
+    font=dict(color="black"),
+)
+fig.show()
 # Plot distribution of non_zero tokens by latent
-px.histogram(
+fig = px.histogram(
     x=non_zero_occurences.cpu().numpy(),
     nbins=100,
     title="Number of times features activated",
-).show()
+)
+fig.add_vline(
+    x=(mean := non_zero_occurences.float().mean().item()),
+    line_dash="dash",
+    line_color="red",
+)
+fig.add_annotation(
+    x=mean,
+    y=0.15,
+    yref="paper",
+    text=f"Mean: {mean:.2f}",
+    showarrow=False,
+    font=dict(color="black"),
+)
+fig.show()
 
 # %%
 N_FEATURES = 5
