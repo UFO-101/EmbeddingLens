@@ -259,7 +259,7 @@ TRAIN = True
 SAVE = True
 LOAD = False
 
-N_FEATURES = 4_000
+N_FEATURES = 2_000
 N_EPOCHS = 10_000
 # N_EPOCHS = 20
 # BATCH_SIZE = 30_000
@@ -267,6 +267,7 @@ BATCH_SIZE = embeds.shape[0] // 2
 LR = 4e-2
 # ZIPF_COEFFS = (1.0, 100.0)
 ZIPF_COEFFS = (1.0, 7.0 * 4.5)
+# ZIPF_COEFFS = (1.0, 7.0 * 7)
 
 
 sae_name = f"reverse_topk_zipf_{ZIPF_COEFFS[0]}_a_{ZIPF_COEFFS[1]}_b"
@@ -289,11 +290,12 @@ if SAVE:
     t.save(sae.state_dict(), file_path)
 if LOAD:
     file_path = repo_path_to_abs_path(
-        f"trained_saes/sae_gpt2_2000_feats_25000_epochs_0.2_l1_0.001_lr.pth"
+        # f"trained_saes/sae_gpt2_2000_feats_25000_epochs_0.2_l1_0.001_lr.pth"
+        "trained_saes/reverse_topk_zipf_1.0_a_31.5_b_gemma-2-2b_4000_en_only_False_feats_10000_epochs_0.04_lr.pth"
     )
-    sae = ReverseTopKSparseAutoencoder(
-        N_FEATURES, d_model, embeds.shape[0], ZIPF_COEFFS
-    ).to(DEVICE)
+    sae = ReverseTopKSparseAutoencoder(N_FEATURES, d_model, BATCH_SIZE, ZIPF_COEFFS).to(
+        DEVICE
+    )
     sae.load_state_dict(t.load(file_path, map_location=DEVICE))
     # sae = ReverseTopKSparseAutoencoder(20518, d_model, embeds.shape[0], (1.0, 21000))
     # sae.to(DEVICE)
@@ -306,15 +308,20 @@ if LOAD:
 
 # %%
 with t.no_grad():
+    mean_embed = embeds.mean(0)
+    dataset = TensorDataset(embeds.detach())
+    loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True)
     print("hi")
-    recons, latents = sae(embeds)
+    input_embeds = next(iter(loader))[0]
+    recons, latents = sae(input_embeds)
     l1s = t.abs(latents).sum(dim=-1)
     print("recons", recons.shape, "latents", latents.shape)
-    recons_l2_dists = (recons - embeds).pow(2).sum(dim=-1)
+    recons_l2_dists = (recons - input_embeds).pow(2).sum(dim=-1)
+    input_embeds_var = (input_embeds - mean_embed).pow(2).sum(dim=-1).mean()
     print("recons_l2_dist", recons_l2_dists.shape)
-    normalized_l2_dists = recons_l2_dists / embeds.pow(2).sum(dim=-1)
+    normalized_l2_dists = recons_l2_dists / input_embeds_var
     print("normalized_l2_dists", normalized_l2_dists.shape)
-    cosine_sims = cosine_similarity(recons, embeds, dim=-1)
+    cosine_sims = cosine_similarity(recons, input_embeds, dim=-1)
     print("cosine_sims", cosine_sims.shape)
     non_zero_latents = (latents != 0).sum(dim=-1)
     print("non_zero_latents", non_zero_latents.shape)
@@ -338,7 +345,9 @@ fig.show()
 
 # Plot distribution of normalized L2 distance
 fig = px.histogram(
-    x=normalized_l2_dists.cpu().numpy(), nbins=100, title="Normalized L2s"
+    x=normalized_l2_dists.cpu().numpy(),
+    nbins=100,
+    title="Fraction of Variance Unexplained (FVU)",
 )
 fig.add_vline(
     x=(mean := normalized_l2_dists.mean().item()), line_dash="dash", line_color="red"
@@ -421,12 +430,12 @@ with t.no_grad():
 # for i in range(N_FEATURES):
 for i in [0, 3, 13, 23, 54, 103]:
     feat_idx = int(t.randint(0, sae.n_latents, (1,)).item())
-    plot_word_scores(
-        latents[:, feat_idx],
-        tok_strs,
-        title=f"Feature {feat_idx}: Top activating tokens",
-        # show_bottom=True,
-    ).show()
+    # plot_word_scores(
+    #     latents[:, feat_idx],
+    #     tok_strs,
+    #     title=f"Feature {feat_idx}: Top activating tokens",
+    #     # show_bottom=True,
+    # ).show()
     plot_word_scores(
         feature_output_logits[:, feat_idx],
         tok_strs,
