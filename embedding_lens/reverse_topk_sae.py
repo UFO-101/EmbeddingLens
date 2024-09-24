@@ -1,6 +1,6 @@
 # %%
 from datetime import datetime
-from typing import Dict, Final, Optional, Tuple
+from typing import Dict, Final, Optional, Tuple, List
 
 import plotly.express as px
 import plotly.graph_objects as go
@@ -17,159 +17,34 @@ from embedding_lens.embeds import get_embeds
 from embedding_lens.fast_features import attn_0_derived_features
 from embedding_lens.linear_model_sae import no_layernorm_gpt2
 from embedding_lens.lr_scheduler import get_scheduler
+from embedding_lens.reverse_top_k_sae import ReverseTopKSparseAutoencoder
 from embedding_lens.utils import repo_path_to_abs_path
-from embedding_lens.visualize import plot_word_scores
+from embedding_lens.visualize import plot_direction_unembeds, plot_word_scores
+from tuned_lens import TunedLens
 
-# MODEL_NAME: Final[str] = "gpt2"
-MODEL_NAME: Final[str] = "gemma-2-2b"
+from transformers import AutoModelForCausalLM
+
+MODEL_NAME: Final[str] = "gpt2"
+# MODEL_NAME: Final[str] = "gemma-2-2b"
 
 # MODEL_NAME: Final[str] = "tiny-stories-33M"
-DEVICE = "cuda:0" if t.cuda.is_available() else "cpu"
+DEVICE = "cuda:1" if t.cuda.is_available() else "cpu"
 # DEVICE = "cpu"
 model = HookedTransformer.from_pretrained_no_processing(MODEL_NAME, device=DEVICE)
+huggingface_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+tuned_lens = TunedLens.from_model_and_pretrained(huggingface_model).to(DEVICE)
 # model = no_layernorm_gpt2(DEVICE)
 # %%
 d_model = model.cfg.d_model
-EN_ONLY = False
-embeds, tok_strs = get_embeds(model, DEVICE, en_only=EN_ONLY)
+# EN_ONLY = True
+# embeds, tok_strs = get_embeds(model, DEVICE, en_only=EN_ONLY)
+tok_strs: List[str] = model.to_str_tokens(t.arange(model.cfg.d_vocab).int())  # type: ignore
 # embeds = attn_0_derived_features(model, embeds.T)
+MLP_IDX = 3
+embeds = model.blocks[MLP_IDX].mlp.W_in.T
 
 
 # %%
-class ReverseTopKSparseAutoencoder(t.nn.Module):
-    """
-    Reverse Top-K Sparse Autoencoder
-
-    Implements:
-        latents = TopK(encoder(x - dec_bias))
-        recons = decoder(latents) + dec_bias
-    """
-
-    def __init__(
-        self,
-        n_latents: int,
-        n_inputs: int,
-        batch_size: int,
-        zipf_coeffs: Tuple[float, float],
-        decoder_bias: Optional[t.Tensor] = None,
-    ) -> None:
-        """
-        :param n_latents: dimension of the autoencoder latent
-        :param n_inputs: dimensionality of the input (e.g residual stream, MLP neurons)
-        :param batch_size: number of samples in the batch for which the autoencoder is being trained
-        :param zipf_coeffs: (alpha, beta) for the Zipf distribution
-        """
-        super().__init__()
-        self.init_params(n_latents, n_inputs, batch_size, zipf_coeffs, decoder_bias)
-        self.reset_activated_latents()
-
-    def init_params(
-        self,
-        n_latents: int,
-        n_inputs: int,
-        batch_size: int,
-        zipf_coeffs: Tuple[float, float],
-        decoder_bias: Optional[t.Tensor] = None,
-    ) -> None:
-        self.n_latents: int = n_latents
-        self.n_inputs: int = n_inputs
-        self.batch_size: int = batch_size
-        self.zipf_coeffs: Tuple[float, float] = zipf_coeffs
-        if decoder_bias is None:
-            decoder_bias = t.zeros(n_inputs, device=DEVICE)
-        self.dec_bias = t.nn.Parameter(decoder_bias)
-        self.encode_weight = t.nn.Parameter(t.zeros([n_latents, n_inputs]))
-        self.decode_weight = t.nn.Parameter(t.zeros([n_inputs, n_latents]))
-        [kaiming_uniform_(w) for w in [self.encode_weight, self.decode_weight]]
-        self.decode_weight.data /= self.decode_weight.data.norm(dim=0)
-        zipf_freq = t.arange(1, n_latents + 1, device=self.dec_bias.device)
-        zipf_freq = 1 / ((zipf_freq + zipf_coeffs[1]).pow(zipf_coeffs[0]))
-        self.feature_topk_indices = (batch_size * zipf_freq).ceil().long().unsqueeze(0)
-        self.feature_topk_indices = self.feature_topk_indices - 1  # 0-indexed
-        print(
-            "feature_topk",
-            self.feature_topk_indices.shape,
-            "feature_topk",
-            self.feature_topk_indices,
-        )
-
-    def reset_activated_latents(
-        self, batch_len: Optional[int] = None, seq_len: Optional[int] = None
-    ):
-        device = self.dec_bias.device
-        batch_shape = [] if batch_len is None else [batch_len]
-        seq_shape = [] if seq_len is None else [seq_len]
-        shape = batch_shape + seq_shape + [self.n_latents]
-        self.register_buffer("latent_total_act", t.zeros(shape, device=device), False)
-
-    @classmethod
-    def from_state_dict(
-        cls,
-        state_dict: Dict[str, t.Tensor],
-        batch_size: int,
-        zipf_coeffs: Tuple[float, float],
-    ) -> "ReverseTopKSparseAutoencoder":
-        n_latents, n_inputs = state_dict["encode_weight"].shape
-        autoencoder = cls(n_latents, n_inputs, batch_size, zipf_coeffs)
-        autoencoder.load_state_dict(state_dict, strict=True, assign=True)
-        autoencoder.reset_activated_latents()
-        return autoencoder
-
-    def encode(self, x: t.Tensor) -> t.Tensor:
-        """
-        :param x: input data (shape: [..., [seq], n_inputs])
-        :return: autoencoder latents (shape: [..., [seq], n_latents])
-        """
-        x = x - self.dec_bias
-        encoded = einsum(
-            x / x.norm(dim=-1, keepdim=True),
-            self.encode_weight / self.encode_weight.norm(dim=-1, keepdim=True),
-            "... d, ... l d -> ... l",
-        )
-        # encoded = einsum(x, self.encode_weight, "... d, ... l d -> ... l")
-        return encoded
-
-    def decode(self, x: t.Tensor) -> t.Tensor:
-        """
-        :param x: autoencoder x (shape: [..., n_latents])
-        :return: reconstructed data (shape: [..., n_inputs])
-        """
-        ein_str = "... l, d l -> ... d"
-        return einsum(x, self.decode_weight, ein_str) + self.dec_bias
-
-    def forward(self, x: t.Tensor) -> Tuple[t.Tensor, ...]:
-        """
-        :param x: input data (shape: [..., n_inputs])
-        :return:  reconstructed data (shape: [..., n_inputs])
-        """
-        assert x.shape[0] == self.batch_size, f"Batch size should be {self.batch_size}"
-        latents = self.encode(x)
-
-        # MAKE IT ABSOLUTE VALUE
-        # sorting_latents = t.abs(latents)
-        sorting_latents = latents
-
-        sorted_values, _ = sorting_latents.sort(dim=0, descending=True)
-        # Get the kth values for each latent
-        kth_values = sorted_values.gather(dim=0, index=self.feature_topk_indices)
-        # Set the values less than the kth value to 0
-        mask = sorting_latents >= kth_values.squeeze()
-        latents = mask * sorting_latents
-
-        # Soft thresholding
-        # sorted_values, _ = t.sort(latents, dim=0, descending=True)
-        # kth_values = t.gather(sorted_values, 0, self.feature_topk_indices)
-        # latents = t.nn.functional.relu(latents - kth_values)
-        # latents = t.where(latents > 0, latents + kth_values, latents)
-
-        # # MAKE IT BINARY
-        # non_zero_mask = latents != 0
-        # latents = t.where(non_zero_mask, latents / latents, latents)
-
-        self.latent_total_act += latents.sum_to_size(self.latent_total_act.shape)
-        recons = self.decode(latents)
-        return recons, latents
-
 
 def train(
     embeds: t.Tensor,
@@ -255,23 +130,24 @@ def train(
 
 # WHY ARE MSEs SO HIGH?
 
-TRAIN = True
-SAVE = True
-LOAD = False
+TRAIN = False
+SAVE = False
+LOAD = True
 
-N_FEATURES = 2_000
-N_EPOCHS = 10_000
+N_FEATURES = 1000
+N_EPOCHS = 3_000
 # N_EPOCHS = 20
 # BATCH_SIZE = 30_000
-BATCH_SIZE = embeds.shape[0] // 2
+BATCH_SIZE = embeds.shape[0]
 LR = 4e-2
 # ZIPF_COEFFS = (1.0, 100.0)
-ZIPF_COEFFS = (1.0, 7.0 * 4.5)
-# ZIPF_COEFFS = (1.0, 7.0 * 7)
+# ZIPF_COEFFS = (1.0, 7.0 * 4.5)
+ZIPF_COEFFS = (1.0, 7.0 * 7)
 
 
 sae_name = f"reverse_topk_zipf_{ZIPF_COEFFS[0]}_a_{ZIPF_COEFFS[1]}_b"
-name = f"{sae_name}_{MODEL_NAME}_{N_FEATURES}_en_only_{EN_ONLY}_feats_{N_EPOCHS}_epochs_{LR}_lr"
+# name = f"{sae_name}_{MODEL_NAME}_{N_FEATURES}_en_only_{EN_ONLY}_feats_{N_EPOCHS}_epochs_{LR}_lr"
+name = f"{sae_name}_{MODEL_NAME}_{N_FEATURES}_final_MLP_Wout_feats_{N_EPOCHS}_epochs_{LR}_lr"
 file_path = repo_path_to_abs_path(f"trained_saes/{name}.pth")
 
 if TRAIN:
@@ -291,7 +167,9 @@ if SAVE:
 if LOAD:
     file_path = repo_path_to_abs_path(
         # f"trained_saes/sae_gpt2_2000_feats_25000_epochs_0.2_l1_0.001_lr.pth"
-        "trained_saes/reverse_topk_zipf_1.0_a_31.5_b_gemma-2-2b_4000_en_only_False_feats_10000_epochs_0.04_lr.pth"
+        # "trained_saes/reverse_topk_zipf_1.0_a_31.5_b_gemma-2-2b_4000_en_only_False_feats_10000_epochs_0.04_lr.pth"
+        # "trained_saes/reverse_topk_zipf_1.0_a_31.5_b_gpt2_300_final_MLP_Wout_feats_10000_epochs_0.04_lr.pth"
+        "trained_saes/reverse_topk_zipf_1.0_a_7.0_b_1000_feats_100000_epochs_0.01_lr.pth"
     )
     sae = ReverseTopKSparseAutoencoder(N_FEATURES, d_model, BATCH_SIZE, ZIPF_COEFFS).to(
         DEVICE
@@ -425,7 +303,8 @@ fig.show()
 # %%
 N_FEATURES = 5
 with t.no_grad():
-    feature_output_logits = embeds @ sae.decode_weight
+    tuned_output_logits = tuned_lens(sae.decode_weight.T, MLP_IDX + 1).T
+    feature_output_logits = model.unembed.W_U.T @ sae.decode_weight
 # For a random sample of features, plot the top activating tokens
 # for i in range(N_FEATURES):
 for i in [0, 3, 13, 23, 54, 103]:
@@ -440,8 +319,15 @@ for i in [0, 3, 13, 23, 54, 103]:
         feature_output_logits[:, feat_idx],
         tok_strs,
         title=f"Feature {feat_idx}: Top output logits",
-        # show_bottom=True,
+        show_bottom=True,
     ).show()
+    plot_word_scores(
+        tuned_output_logits[:, feat_idx],
+        tok_strs,
+        title=f"Tuned {feat_idx}: Top output logits",
+        show_bottom=True,
+    ).show()
+    print("/n/n")
 # %%
 
 N_TOKENS = 5
@@ -461,6 +347,7 @@ for i in range(N_TOKENS):
             latents[:, feat_idx],
             tok_strs,
             title=f"Feature {feat_idx}: Top activating tokens",
+            show_bottom=True,
         ).show()
 
 

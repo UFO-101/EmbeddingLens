@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:2e109375a72e9c5a72b0979968beb15a9a557d37bbfeac6eeaf9f347c7ca627d"
+content_hash = "sha256:eed690e9b59e5c6bb05bb29db22512136859283b475925a432c128f446ba5bd0"
 
 [[metadata.targets]]
 requires_python = "~=3.12"
@@ -463,6 +463,17 @@ files = [
 ]
 
 [[package]]
+name = "docstring-parser"
+version = "0.16"
+requires_python = ">=3.6,<4.0"
+summary = "Parse Python docstrings in reST, Google and Numpydoc format"
+groups = ["default"]
+files = [
+    {file = "docstring_parser-0.16-py3-none-any.whl", hash = "sha256:bf0a1387354d3691d102edef7ec124f219ef639982d096e26e3b60aeffa90637"},
+    {file = "docstring_parser-0.16.tar.gz", hash = "sha256:538beabd0af1e2db0146b6bd3caa526c35a34d61af9fd2887f3a8a27a739aa6e"},
+]
+
+[[package]]
 name = "einops"
 version = "0.8.0"
 requires_python = ">=3.8"
@@ -562,6 +573,22 @@ groups = ["default"]
 files = [
     {file = "filelock-3.15.4-py3-none-any.whl", hash = "sha256:6ca1fffae96225dab4c6eaf1c4f4f28cd2568d3ec2a44e15a08520504de468e7"},
     {file = "filelock-3.15.4.tar.gz", hash = "sha256:2207938cbc1844345cb01a5a95524dae30f0ce089eba5b00378295a17e3e90cb"},
+]
+
+[[package]]
+name = "flatten-dict"
+version = "0.4.2"
+requires_python = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
+summary = "A flexible utility for flattening and unflattening dict-like objects in Python."
+groups = ["default"]
+dependencies = [
+    "importlib-metadata; python_version < \"3.8\"",
+    "pathlib2<3.0,>=2.3; python_version < \"3.4\"",
+    "six<2.0,>=1.12",
+]
+files = [
+    {file = "flatten-dict-0.4.2.tar.gz", hash = "sha256:506a96b6e6f805b81ae46a0f9f31290beb5fa79ded9d80dbe1b7fa236ab43076"},
+    {file = "flatten_dict-0.4.2-py2.py3-none-any.whl", hash = "sha256:7e245b20c4c718981212210eec4284a330c9f713e632e98765560e05421e48ad"},
 ]
 
 [[package]]
@@ -2219,6 +2246,21 @@ files = [
 ]
 
 [[package]]
+name = "simple-parsing"
+version = "0.1.6"
+requires_python = "<4.0,>=3.8"
+summary = "A small utility for simplifying and cleaning up argument parsing scripts."
+groups = ["default"]
+dependencies = [
+    "docstring-parser<1.0,>=0.15",
+    "typing-extensions>=4.5.0",
+]
+files = [
+    {file = "simple_parsing-0.1.6-py3-none-any.whl", hash = "sha256:2a6e74b061fb754cc441559e8dcea9d108286d9e0ffaa9cca4eea6bbe85372e1"},
+    {file = "simple_parsing-0.1.6.tar.gz", hash = "sha256:dad192e9633515a5627e343106636590a39a5ce85f6c47ced43507044ed98956"},
+]
+
+[[package]]
 name = "six"
 version = "1.16.0"
 requires_python = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
@@ -2381,6 +2423,23 @@ files = [
 ]
 
 [[package]]
+name = "torchdata"
+version = "0.8.0"
+requires_python = ">=3.8"
+summary = "Composable data loading modules for PyTorch"
+groups = ["default"]
+dependencies = [
+    "requests",
+    "torch>=2",
+    "urllib3>=1.25",
+]
+files = [
+    {file = "torchdata-0.8.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:4e3f7efac3d8a4bd4efcb1427869c04043d0a0a019f9aa1eb381bd6c6b321e62"},
+    {file = "torchdata-0.8.0-cp312-cp312-manylinux1_x86_64.whl", hash = "sha256:bb878e243e58526a5b3ac54583f7c029ad643a34ade798800c1878c83f1c36ee"},
+    {file = "torchdata-0.8.0-cp312-cp312-win_amd64.whl", hash = "sha256:7a43fc7e8d3ae2632859f15d5439cd97b83af559fecd8963e5f09e08f93b81e2"},
+]
+
+[[package]]
 name = "tornado"
 version = "6.4.1"
 requires_python = ">=3.8"
@@ -2510,6 +2569,29 @@ dependencies = [
 ]
 files = [
     {file = "triton-3.0.0-1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:34e509deb77f1c067d8640725ef00c5cbfcb2052a1a3cb6a6d343841f92624eb"},
+]
+
+[[package]]
+name = "tuned-lens"
+version = "0.2.0"
+requires_python = ">=3.9"
+summary = "Tools for understanding how transformer predictions are built layer-by-layer"
+groups = ["default"]
+dependencies = [
+    "accelerate",
+    "datasets",
+    "flatten-dict>=0.4.1",
+    "huggingface-hub>=0.12.1",
+    "plotly>=5.13.1",
+    "simple-parsing>=0.1.1",
+    "torch>=1.13.0",
+    "torchdata>=0.6.0",
+    "transformers>=4.28.1",
+    "wandb>=0.15.0",
+]
+files = [
+    {file = "tuned-lens-0.2.0.tar.gz", hash = "sha256:df40587a07d6133ccf4eaabab0a7d6808721f04ff1fc636716efff4bd5c001a2"},
+    {file = "tuned_lens-0.2.0-py3-none-any.whl", hash = "sha256:1e41b8dad117984047e806529ceca620869d630aecead949ec5ca53d09b4f6ee"},
 ]
 
 [[package]]

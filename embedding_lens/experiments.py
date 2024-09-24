@@ -22,7 +22,7 @@ from embedding_lens.visualize import plot_word_scores
 MODEL_NAME: Final[str] = "gpt2"
 # MODEL_NAME: Final[str] = "tiny-stories-33M"
 # MODEL_NAME: Final[str] = "pythia-2.8b-deduped"
-DEVICE = "cuda:2" if t.cuda.is_available() else "cpu"
+DEVICE = "cuda:1" if t.cuda.is_available() else "cpu"
 
 model = HookedTransformer.from_pretrained_no_processing(MODEL_NAME, device=DEVICE)
 d_model = model.cfg.d_model
@@ -30,18 +30,19 @@ embeds, tok_strs = get_embeds(model, DEVICE, en_only=True)
 
 # %%
 GATED = False
-N_FEATURES = 10000
+N_FEATURES = 2000
 N_EPOCHS = 1000
 L1_LAMBDA = 1e3
 CORRELATION_LAMBDA = 0
 LR = 1e-3
 
-TRAIN = True
+TRAIN = False
 SAVE = False
-LOAD = False
+LOAD = True
 
 sae_name = "gated_sae" if GATED else "sae"
 sae_name = f"{sae_name}_{MODEL_NAME}_{N_FEATURES}_feats_{N_EPOCHS}_epochs_{L1_LAMBDA}_l1_{LR}_lr_{CORRELATION_LAMBDA}_correlation"
+sae_name = "sae_gpt2_2000_feats_25000_epochs_0.2_l1_0.001_lr"
 file_name = f"{sae_name}.pth"
 file_path = repo_path_to_abs_path(f"trained_saes/{file_name}")
 
