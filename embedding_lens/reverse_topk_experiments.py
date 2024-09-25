@@ -12,36 +12,39 @@ from torch.nn.init import kaiming_uniform_
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 from transformer_lens import HookedTransformer
 
+from embedding_lens import top_activating_examples
 from embedding_lens.custom_tqdm import tqdm
 from embedding_lens.embeds import get_embeds
 from embedding_lens.fast_features import attn_0_derived_features
 from embedding_lens.linear_model_sae import no_layernorm_gpt2
 from embedding_lens.lr_scheduler import get_scheduler
 from embedding_lens.reverse_top_k_sae import ReverseTopKSparseAutoencoder
+from embedding_lens.top_activating_examples import get_top_activating_examples
 from embedding_lens.utils import repo_path_to_abs_path
 from embedding_lens.visualize import plot_direction_unembeds, plot_word_scores
 from tuned_lens import TunedLens
 
 from transformers import AutoModelForCausalLM
+# %%
 
 MODEL_NAME: Final[str] = "gpt2"
 # MODEL_NAME: Final[str] = "gemma-2-2b"
 
 # MODEL_NAME: Final[str] = "tiny-stories-33M"
-DEVICE = "cuda:1" if t.cuda.is_available() else "cpu"
+DEVICE = "cuda:3" if t.cuda.is_available() else "cpu"
 # DEVICE = "cpu"
 model = HookedTransformer.from_pretrained_no_processing(MODEL_NAME, device=DEVICE)
 huggingface_model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
 tuned_lens = TunedLens.from_model_and_pretrained(huggingface_model).to(DEVICE)
-# model = no_layernorm_gpt2(DEVICE)
+del huggingface_model
 # %%
 d_model = model.cfg.d_model
-# EN_ONLY = True
-# embeds, tok_strs = get_embeds(model, DEVICE, en_only=EN_ONLY)
+EN_ONLY = False
+embeds, tok_strs = get_embeds(model, DEVICE, en_only=EN_ONLY)
 tok_strs: List[str] = model.to_str_tokens(t.arange(model.cfg.d_vocab).int())  # type: ignore
 # embeds = attn_0_derived_features(model, embeds.T)
 MLP_IDX = 3
-embeds = model.blocks[MLP_IDX].mlp.W_in.T
+# embeds = model.blocks[MLP_IDX].mlp.W_in.T
 
 
 # %%
@@ -134,7 +137,7 @@ TRAIN = False
 SAVE = False
 LOAD = True
 
-N_FEATURES = 1000
+N_FEATURES = 2000
 N_EPOCHS = 3_000
 # N_EPOCHS = 20
 # BATCH_SIZE = 30_000
@@ -142,7 +145,8 @@ BATCH_SIZE = embeds.shape[0]
 LR = 4e-2
 # ZIPF_COEFFS = (1.0, 100.0)
 # ZIPF_COEFFS = (1.0, 7.0 * 4.5)
-ZIPF_COEFFS = (1.0, 7.0 * 7)
+# ZIPF_COEFFS = (1.0, 7.0 * 7)
+ZIPF_COEFFS = (1.0, 7.0)
 
 
 sae_name = f"reverse_topk_zipf_{ZIPF_COEFFS[0]}_a_{ZIPF_COEFFS[1]}_b"
@@ -169,7 +173,8 @@ if LOAD:
         # f"trained_saes/sae_gpt2_2000_feats_25000_epochs_0.2_l1_0.001_lr.pth"
         # "trained_saes/reverse_topk_zipf_1.0_a_31.5_b_gemma-2-2b_4000_en_only_False_feats_10000_epochs_0.04_lr.pth"
         # "trained_saes/reverse_topk_zipf_1.0_a_31.5_b_gpt2_300_final_MLP_Wout_feats_10000_epochs_0.04_lr.pth"
-        "trained_saes/reverse_topk_zipf_1.0_a_7.0_b_1000_feats_100000_epochs_0.01_lr.pth"
+        # "trained_saes/reverse_topk_zipf_1.0_a_7.0_b_1000_feats_100000_epochs_0.01_lr.pth"
+        "trained_saes/reverse_topk_zipf_1.0_a_7.0_b_gpt2_2000_en_only_False_feats_3000_epochs_0.04_lr.pth"
     )
     sae = ReverseTopKSparseAutoencoder(N_FEATURES, d_model, BATCH_SIZE, ZIPF_COEFFS).to(
         DEVICE
@@ -183,6 +188,9 @@ if LOAD:
     #     "dec_bias": t.zeros_like(embeds.mean(0), device=DEVICE),
     # }
     # sae.load_state_dict(state_dict)
+#%%
+fast_features = attn_0_derived_features(model, sae.decode_weight)
+get_top_activating_examples(model, fast_features, "blocks.0.hook_resid_mid", batch_size=10)
 
 # %%
 with t.no_grad():

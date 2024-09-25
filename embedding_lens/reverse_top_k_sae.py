@@ -63,7 +63,7 @@ class ReverseTopKSparseAutoencoder(t.nn.Module):
         self.batch_size: int = batch_size
         self.zipf_coeffs: Tuple[float, float] = zipf_coeffs
         if decoder_bias is None:
-            decoder_bias = t.zeros(n_inputs, device=DEVICE)
+            decoder_bias = t.zeros(n_inputs)
         self.dec_bias = t.nn.Parameter(decoder_bias)
         self.encode_weight = t.nn.Parameter(t.zeros([n_latents, n_inputs]))
         self.decode_weight = t.nn.Parameter(t.zeros([n_inputs, n_latents]))
@@ -71,8 +71,9 @@ class ReverseTopKSparseAutoencoder(t.nn.Module):
         self.decode_weight.data /= self.decode_weight.data.norm(dim=0)
         zipf_freq = t.arange(1, n_latents + 1, device=self.dec_bias.device)
         zipf_freq = 1 / ((zipf_freq + zipf_coeffs[1]).pow(zipf_coeffs[0]))
-        self.feature_topk_indices = (batch_size * zipf_freq).ceil().long().unsqueeze(0)
-        self.feature_topk_indices = self.feature_topk_indices - 1  # 0-indexed
+        feature_topk_indices = (batch_size * zipf_freq).ceil().long().unsqueeze(0) -1 # 0-indexed
+        self.register_buffer("feature_topk_indices", feature_topk_indices, False)
+        
         print(
             "feature_topk",
             self.feature_topk_indices.shape,
@@ -126,8 +127,8 @@ class ReverseTopKSparseAutoencoder(t.nn.Module):
 
     def forward(self, x: t.Tensor) -> Tuple[t.Tensor, ...]:
         """
-        :param x: input data (shape: [..., n_inputs])
-        :return:  reconstructed data (shape: [..., n_inputs])
+        :param x: input data (shape: [batch, n_inputs])
+        :return:  reconstructed data (shape: [batch, n_inputs])
         """
         assert x.shape[0] == self.batch_size, f"Batch size should be {self.batch_size}"
         latents = self.encode(x)
